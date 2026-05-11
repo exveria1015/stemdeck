@@ -29,7 +29,7 @@ class Job:
     peak_db: float | None = None  # sample peak in dBFS (close to true peak)
     stems: list[dict[str, str]] = field(default_factory=list)
     # Subset of stems the user chose at submit. The pipeline produces all
-    # 6 regardless (Demucs htdemucs_6s is fixed), but after collect we
+    # 6 regardless, but after collect we
     # mix down only the selected ones into mix.wav so the user can
     # download a single track containing just their chosen stems.
     selected_stems: list[str] = field(default_factory=list)

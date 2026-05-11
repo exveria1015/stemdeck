@@ -82,3 +82,46 @@ def test_configure_portable_environment_leaves_dev_cache_env_alone(monkeypatch):
         monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
         monkeypatch.delenv("TORCH_HOME", raising=False)
         importlib.reload(original)
+
+
+def test_residual_allocator_defaults_to_vendored_checkout(monkeypatch):
+    import app.core.config as config
+
+    original = config
+    monkeypatch.delenv("STEMDECK_SEPARATOR", raising=False)
+    monkeypatch.delenv("STEMDECK_RESIDUAL_ALLOCATOR_DIR", raising=False)
+    try:
+        reloaded = importlib.reload(config)
+        assert reloaded.SEPARATION_BACKEND == "residual_allocator"
+        assert reloaded.ROOT / "vendor" / "Residual-Allocator" == reloaded.RESIDUAL_ALLOCATOR_DIR
+    finally:
+        importlib.reload(original)
+
+
+def test_residual_allocator_dir_override(monkeypatch, tmp_path: Path):
+    import app.core.config as config
+
+    original = config
+    allocator_dir = tmp_path / "allocator"
+    monkeypatch.setenv("STEMDECK_RESIDUAL_ALLOCATOR_DIR", str(allocator_dir))
+    try:
+        reloaded = importlib.reload(config)
+        assert allocator_dir.resolve() == reloaded.RESIDUAL_ALLOCATOR_DIR
+        assert allocator_dir.resolve() / "infer.py" == reloaded.RESIDUAL_ALLOCATOR_SCRIPT
+    finally:
+        monkeypatch.delenv("STEMDECK_RESIDUAL_ALLOCATOR_DIR", raising=False)
+        importlib.reload(original)
+
+
+def test_residual_allocator_relative_override_is_root_relative(monkeypatch):
+    import app.core.config as config
+
+    original = config
+    monkeypatch.setenv("STEMDECK_RESIDUAL_ALLOCATOR_DIR", "relative-allocator")
+    try:
+        reloaded = importlib.reload(config)
+        assert (reloaded.ROOT / "relative-allocator").resolve() == reloaded.RESIDUAL_ALLOCATOR_DIR
+        assert reloaded.RESIDUAL_ALLOCATOR_DIR / "infer.py" == reloaded.RESIDUAL_ALLOCATOR_SCRIPT
+    finally:
+        monkeypatch.delenv("STEMDECK_RESIDUAL_ALLOCATOR_DIR", raising=False)
+        importlib.reload(original)

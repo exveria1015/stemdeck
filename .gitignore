@@ -39,6 +39,9 @@ data/
 jobs/
 .run/
 
+# Vendored separator model weights
+vendor/Residual-Allocator/weights/*.ckpt
+
 # Local env / secrets
 .env
 .env.*
@@ -59,3 +62,5 @@ Thumbs.db
 .python-version
 .claude/
 .playwright-mcp/
+# CocoIndex Code (ccc)
+/.cocoindex_code/

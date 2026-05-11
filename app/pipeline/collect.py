@@ -6,7 +6,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from app.core.config import DEMUCS_MODEL, JOB_TTL_SECONDS, STEM_NAMES, ffmpeg_executable
+from app.core.config import JOB_TTL_SECONDS, STEM_NAMES, ffmpeg_executable
 from app.core.models import Job
 from app.core.registry import all_jobs as registry_all
 from app.core.registry import persist as registry_persist
@@ -63,8 +63,8 @@ _TERMINAL = frozenset(("done", "error", "cancelled"))
 
 
 def collect(job: Job, stems_root: Path, job_dir: Path) -> list[str]:
-    """Move Demucs-emitted stems into the job's stems/ dir and clean up
-    the demucs intermediate dir. Does NOT delete the source download --
+    """Move separator-emitted stems into the job's stems/ dir and clean up
+    the separator intermediate dir. Does NOT delete the source download --
     cleanup_source() is called by the runner after any post-processing
     that needs to re-encode the source (e.g. building original.wav)."""
     target_dir = job_dir / "stems"
@@ -75,17 +75,30 @@ def collect(job: Job, stems_root: Path, job_dir: Path) -> list[str]:
         if src.exists():
             shutil.move(str(src), target_dir / f"{name}.wav")
             found.append(name)
-    _rmtree(job_dir / DEMUCS_MODEL)
+    _cleanup_separator_output(stems_root, job_dir)
     if not found:
-        raise RuntimeError("no stems produced by demucs")
+        raise RuntimeError("no stems produced by separator")
     return found
+
+
+def _cleanup_separator_output(stems_root: Path, job_dir: Path) -> None:
+    try:
+        resolved_stems_root = stems_root.resolve()
+        resolved_job_dir = job_dir.resolve()
+    except OSError:
+        return
+
+    if resolved_stems_root.parent == resolved_job_dir:
+        _rmtree(stems_root)
+    elif resolved_stems_root.parent.parent == resolved_job_dir:
+        _rmtree(stems_root.parent)
 
 
 def cleanup_source(job_dir: Path) -> None:
     """Delete the source audio file. Called after collect AND after any
     post-processing that re-encodes the source (make_original_track).
-    The source is 100-300 MB, so getting rid of it is the bulk of disk
-    reclaim per job; only the stems remain."""
+    The source can be large, so getting rid of it is the bulk of disk reclaim
+    per job; only the stems remain."""
     for f in job_dir.glob("source.*"):
         f.unlink(missing_ok=True)
 
@@ -143,8 +156,8 @@ def make_selected_mix(job: Job, stems_dir: Path, found: list[str]) -> Path | Non
     download URL, so a single-stem selection points the Download Mix
     button directly at the existing stem file.
 
-    amix normalize=0 keeps stem amplitudes as-is. Demucs separations
-    sum back to (close to) the original signal, so a 2-stem subset
+    amix normalize=0 keeps stem amplitudes as-is. Separator outputs
+    are expected to sum back to (close to) the original signal, so a 2-stem subset
     fits comfortably below 0 dBFS without normalization headroom."""
     selected = [s for s in job.selected_stems if s in found]
     if not selected or set(selected) == set(found):

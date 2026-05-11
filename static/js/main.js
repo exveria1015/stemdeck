@@ -95,8 +95,9 @@ function wireFileDrop() {
   function applyFile(file) {
     if (!file) return;
     const lower = file.name.toLowerCase();
-    if (!lower.endsWith(".mp3") && !lower.endsWith(".wav")) {
-      alert("Only MP3 and WAV files are supported.");
+    const supported = [".aac", ".aif", ".aiff", ".flac", ".m4a", ".mp3", ".ogg", ".opus", ".wav"];
+    if (!supported.some((ext) => lower.endsWith(ext))) {
+      alert("Supported audio files: AAC, AIFF, FLAC, M4A, MP3, OGG, OPUS, and WAV.");
       return;
     }
     if (fileName) fileName.textContent = file.name;

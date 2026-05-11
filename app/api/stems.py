@@ -8,7 +8,7 @@ from app.core.registry import get as registry_get
 
 router = APIRouter(tags=["stems"])
 
-# Stem files served by this endpoint: the 6 demucs stems + two
+# Stem files served by this endpoint: the 6 separator stems + two
 # pipeline-produced extras. "original" is the re-encoded source song
 # (added when the user picked a strict subset), "mix" is the ffmpeg
 # amix of the user's selected stems.

@@ -12,7 +12,7 @@ from app.core.models import Job
 logger = logging.getLogger("stemdeck.registry")
 
 _jobs: dict[str, Job] = {}
-# Active subprocesses keyed by job_id (currently only Demucs). Lets
+# Active subprocesses keyed by job_id. Lets
 # POST /cancel terminate the running process from the API thread instead
 # of waiting for the pipeline thread to notice the cancel flag.
 _procs: dict[str, subprocess.Popen] = {}

@@ -1,5 +1,6 @@
 import os
 import re
+import shlex
 import sys
 from pathlib import Path
 
@@ -17,13 +18,31 @@ def _env_path(name: str, default: Path) -> Path:
     return Path(raw).expanduser().resolve() if raw else default
 
 
-def _detect_device() -> str:
-    """Pick best available Torch device for Demucs. Override via
-    STEMDECK_DEMUCS_DEVICE env var ('cuda' | 'mps' | 'cpu'). Apple Silicon
-    silently falls back to CPU otherwise -- demucs's CLI default is
-    "cuda if available else cpu" and macOS has no CUDA, leaving the
-    integrated GPU idle and processing 3-5x slower than necessary."""
-    forced = os.environ.get("STEMDECK_DEMUCS_DEVICE", "").strip().lower()
+def _env_path_from(name: str, default: Path, base: Path) -> Path:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return (base / default).resolve() if not default.is_absolute() else default.resolve()
+    path = Path(raw).expanduser()
+    if not path.is_absolute():
+        path = base / path
+    return path.resolve()
+
+
+def _env_args(name: str) -> list[str]:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return []
+    try:
+        return shlex.split(raw, posix=os.name != "nt")
+    except ValueError:
+        return []
+
+
+def _detect_device(env_name: str) -> str:
+    """Pick best available Torch device. Override with an env var
+    containing 'cuda', 'mps', or 'cpu'. Apple Silicon silently falls back
+    to CPU otherwise."""
+    forced = os.environ.get(env_name, "").strip().lower()
     if forced in ("cuda", "mps", "cpu"):
         return forced
     try:
@@ -39,6 +58,15 @@ def _detect_device() -> str:
 
 
 ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def _default_residual_allocator_dir() -> Path:
+    vendored = (ROOT / "vendor" / "Residual-Allocator").resolve()
+    if vendored.is_dir():
+        return vendored
+    return (ROOT / "../Residual-Allocator").resolve()
+
+
 STATIC_DIR = ROOT / "static"
 STEM_NAMES: tuple[str, ...] = ("vocals", "drums", "bass", "guitar", "piano", "other")
 JOB_ID_RE = re.compile(r"^[a-f0-9]{12}$")
@@ -66,8 +94,44 @@ FFPROBE_BIN = _env_path(
     "STEMDECK_FFPROBE",
     FFMPEG_DIR / ("ffprobe.exe" if sys.platform.startswith("win") else "ffprobe"),
 )
+SEPARATION_BACKEND = (
+    os.environ.get("STEMDECK_SEPARATOR", "residual_allocator").strip().lower().replace("-", "_")
+    or "residual_allocator"
+)
 DEMUCS_MODEL = os.environ.get("STEMDECK_DEMUCS_MODEL", "htdemucs_6s").strip() or "htdemucs_6s"
-DEMUCS_DEVICE = _detect_device()
+DEMUCS_DEVICE = _detect_device("STEMDECK_DEMUCS_DEVICE")
+RESIDUAL_ALLOCATOR_DIR = _env_path_from(
+    "STEMDECK_RESIDUAL_ALLOCATOR_DIR",
+    _default_residual_allocator_dir(),
+    ROOT,
+)
+RESIDUAL_ALLOCATOR_SCRIPT = _env_path_from(
+    "STEMDECK_RESIDUAL_ALLOCATOR_SCRIPT",
+    RESIDUAL_ALLOCATOR_DIR / "infer.py",
+    ROOT,
+)
+RESIDUAL_ALLOCATOR_BASE_CONFIG = _env_path_from(
+    "STEMDECK_RESIDUAL_ALLOCATOR_BASE_CONFIG",
+    RESIDUAL_ALLOCATOR_DIR / "configs" / "bs_roformer_sw_fixed_alloc.yaml",
+    ROOT,
+)
+RESIDUAL_ALLOCATOR_BASE_CHECKPOINT = _env_path_from(
+    "STEMDECK_RESIDUAL_ALLOCATOR_BASE_CHECKPOINT",
+    RESIDUAL_ALLOCATOR_DIR / "weights" / "BS-Rofo-SW-Fixed.ckpt",
+    ROOT,
+)
+RESIDUAL_ALLOCATOR_CONFIG = _env_path_from(
+    "STEMDECK_RESIDUAL_ALLOCATOR_CONFIG",
+    RESIDUAL_ALLOCATOR_DIR / "configs" / "residual_allocator.yaml",
+    ROOT,
+)
+RESIDUAL_ALLOCATOR_CHECKPOINT = _env_path_from(
+    "STEMDECK_RESIDUAL_ALLOCATOR_CHECKPOINT",
+    RESIDUAL_ALLOCATOR_DIR / "weights" / "residual_allocator.safetensors",
+    ROOT,
+)
+RESIDUAL_ALLOCATOR_DEVICE = _detect_device("STEMDECK_RESIDUAL_ALLOCATOR_DEVICE")
+RESIDUAL_ALLOCATOR_ARGS = _env_args("STEMDECK_RESIDUAL_ALLOCATOR_ARGS")
 MAX_DURATION_SEC = max(60, _env_int("STEMDECK_MAX_DURATION_SEC", 1200))  # 20 min default
 JOB_TTL_SECONDS = max(300, _env_int("STEMDECK_JOB_TTL_SECONDS", 24 * 3600))  # 24 h default
 MAX_PENDING_JOBS = max(1, min(50, _env_int("STEMDECK_MAX_PENDING_JOBS", 3)))
