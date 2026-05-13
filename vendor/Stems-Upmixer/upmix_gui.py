@@ -114,7 +114,7 @@ class UpmixGui(tk.Tk):
             "brickwall_recovery_strength": "0.75",
             "stem_de_limiter": "off",
             "stem_de_limiter_checkpoint": default_stem_checkpoint(),
-            "stem_de_limiter_mix": "",
+            "stem_de_limiter_mix": "0.45",
             "stem_de_limiter_keep_stems": False,
             "render_bed": True,
             "render_flac": True,

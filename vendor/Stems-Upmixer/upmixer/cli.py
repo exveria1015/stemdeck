@@ -537,7 +537,7 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Stem SGI de-limiter mode. auto chooses safe/remaster/repair from source metrics "
             "and rejects the processed stems if artifact guards fail. safe disables it, remaster "
-            "defaults to mix 0.65, repair defaults to mix 0.75, sections2 is the manual preset. "
+            "defaults to mix 0.45, repair defaults to mix 0.75, sections2 is the manual preset. "
             "Default: off."
         ),
     )
@@ -554,7 +554,7 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=None,
         help=(
-            "Override parallel mix for stem SGI de-limiter. Defaults: sections2/remaster=0.65, "
+            "Override parallel mix for stem SGI de-limiter. Defaults: sections2/remaster=0.45, "
             "repair=0.75, auto chooses from selected mode."
         ),
     )

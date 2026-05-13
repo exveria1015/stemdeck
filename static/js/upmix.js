@@ -107,7 +107,7 @@ const ADVANCED_CLI_FIELDS = [
   { group: "safety", section: "Recovery", key: "brickwall_recovery_keep_stems", label: "Keep Recovery", type: "bool", default: false },
   { group: "safety", section: "Stem SGI", key: "stem_de_limiter", label: "Stem SGI", type: "select", default: "auto", options: ["off", "auto", "safe", "remaster", "repair", "sections2"] },
   { group: "safety", section: "Stem SGI", key: "stem_de_limiter_checkpoint", label: "Stem CKPT", type: "path", default: DEFAULT_STEM_SGI_CHECKPOINT, placeholder: "weights/model.safetensors" },
-  { group: "safety", section: "Stem SGI", key: "stem_de_limiter_mix", label: "Stem Mix", type: "number", default: "", step: 0.05 },
+  { group: "safety", section: "Stem SGI", key: "stem_de_limiter_mix", label: "Stem Mix", type: "number", default: 0.45, step: 0.05 },
   { group: "safety", section: "Stem SGI", key: "stem_de_limiter_device", label: "Stem Device", type: "text", default: "auto" },
   { group: "safety", section: "Stem SGI", key: "stem_de_limiter_chunk_sec", label: "Stem Chunk", type: "number", default: 8, step: 0.5 },
   { group: "safety", section: "Stem SGI", key: "stem_de_limiter_overlap_sec", label: "Stem Overlap", type: "number", default: 1, step: 0.1 },
