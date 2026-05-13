@@ -2,12 +2,13 @@ import {
   form, urlInput, submitBtn, errorEl, jobBox, jobTitleEl, jobStageEl,
   jobDetailEl, jobCancelBtn, progressEl, titleEl, bpmChip, keyChip,
   eventSource, setEventSource, setCurrentJobId, currentJobId,
-  selectedStems,
+  selectedStems, upmixRequested,
 } from "./state.js";
 import { destroyPlayer } from "./player.js";
 import { wireUpAudio } from "./player.js";
 import { stagePhrases } from "./phrases.js";
 import { addTrackToLibrary, setCurrentTrack, updateTrackStatus } from "./catalog.js";
+import { renderUpmixPanel, resetUpmixPanel } from "./upmix.js";
 
 // Playful stage label rotation (Claude-Code-style flair). The backend
 // emits truthful stage strings; we surface them in the small #job-detail
@@ -91,6 +92,7 @@ export function reset() {
   jobTitleEl.textContent = "";
   jobStageEl.textContent = "";
   jobDetailEl.textContent = "";
+  resetUpmixPanel();
   progressEl.value = 0;
   setSubmitProcessing(false);
   setCurrentJobId(null);
@@ -114,6 +116,9 @@ function applyState(state) {
       keyConfidence: state.key_confidence,
       lufs: state.lufs,
       peakDb: state.peak_db,
+      upmixRequested: state.upmix_requested,
+      upmixOutputs: state.upmix_outputs || [],
+      upmixError: state.upmix_error || null,
       sourceUrl: jobSources.get(state.job_id) || urlInput.value,
     });
     setCurrentTrack(state.job_id);
@@ -159,6 +164,7 @@ function applyState(state) {
     if (summaryPeak) summaryPeak.textContent = state.peak_db.toFixed(1);
     loudnessCard.classList.remove("hidden");
   }
+  renderUpmixPanel(state);
   // Stage label is owned by the phrase-rotation timer below; we don't
   // overwrite it from each SSE tick. The truthful backend stage goes
   // to the small detail line instead.
@@ -347,6 +353,7 @@ export function wireJobForm() {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("stems", JSON.stringify([...selectedStems]));
+      fd.append("upmix", upmixRequested ? "1" : "0");
       fetchInit = { method: "POST", body: fd };
     } else {
       fetchInit = {
@@ -357,6 +364,7 @@ export function wireJobForm() {
           // Backend uses this to decide whether to ffmpeg-amix a
           // "selected stems" track (mix.wav) at the end of the pipeline.
           stems: [...selectedStems],
+          upmix: upmixRequested,
         }),
       };
     }
@@ -391,6 +399,9 @@ export function wireJobForm() {
       keyConfidence: null,
       lufs: null,
       peakDb: null,
+      upmixRequested,
+      upmixOutputs: [],
+      upmixError: null,
       sourceUrl,
     });
     setCurrentTrack(jobId);

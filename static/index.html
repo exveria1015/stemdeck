@@ -23,7 +23,7 @@
     <link rel="stylesheet" href="/css/widgets.css" />
   </head>
   <body>
-    <div class="app">
+    <div class="app" data-workspace-tab="mix">
 
       <!-- ─ Topbar ─ -->
       <header class="topbar appbar">
@@ -120,6 +120,15 @@
                   <path d="M4 13v-2"></path><path d="M8 17V7"></path><path d="M12 21V3"></path><path d="M16 17V7"></path><path d="M20 13v-2"></path>
                 </svg>
                 <span>Others</span>
+              </button>
+              <button class="stem-choice upmix-choice" id="upmixChoice" type="button" aria-pressed="false">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path d="M4 8v8"></path><path d="M20 8v8"></path>
+                  <path d="M8 5v14"></path><path d="M16 5v14"></path>
+                  <path d="M11 10a3 3 0 0 1 2 0"></path>
+                  <path d="M9.5 14a5 5 0 0 0 5 0"></path>
+                </svg>
+                <span>Upmix</span>
               </button>
             </div>
           </form>
@@ -300,6 +309,12 @@
                   <strong><span id="summary-peak">—</span> <small>dBFS<br />Peak</small></strong>
                 </div>
 
+                <div class="analysis-card upmix-card hidden" id="upmix-card">
+                  <h3>Upmix Exports</h3>
+                  <strong id="upmix-status">Off</strong>
+                  <div class="upmix-links" id="upmix-links"></div>
+                </div>
+
                 <div class="analysis-card beat-card">
                   <h3>Beat Overview</h3>
                   <div class="beat-values">
@@ -312,8 +327,13 @@
           </div>
         </section>
 
+        <div class="workspace-tabs" role="tablist" aria-label="Workspace">
+          <button class="workspace-tab active" id="workspaceTabMix" type="button" role="tab" aria-selected="true" aria-controls="workspacePanelMix workspacePanelMixer" data-workspace-tab="mix">Waveform / Mixer</button>
+          <button class="workspace-tab" id="workspaceTabUpmix" type="button" role="tab" aria-selected="false" aria-controls="workspacePanelUpmix" data-workspace-tab="upmix">Upmix / Controller</button>
+        </div>
+
         <!-- ─ Widget: Waveform ─ -->
-        <section class="widget surface-panel" data-widget="waveform">
+        <section class="widget surface-panel" data-widget="waveform" data-workspace-section="mix" id="workspacePanelMix">
           <div class="widget-head" role="button" tabindex="0" aria-expanded="true">
             <div class="title-block">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -415,8 +435,138 @@
           </div>
         </section>
 
+        <!-- ─ Widget: Upmix ─ -->
+        <section class="widget surface-panel" data-widget="upmix" data-workspace-section="upmix" id="workspacePanelUpmix">
+          <div class="widget-head" role="button" tabindex="0" aria-expanded="true">
+            <div class="title-block">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M4 8v8"></path><path d="M20 8v8"></path>
+                <path d="M8 5v14"></path><path d="M16 5v14"></path>
+                <path d="M11 10a3 3 0 0 1 2 0"></path>
+                <path d="M9.5 14a5 5 0 0 0 5 0"></path>
+              </svg>
+              <h3>Upmix</h3>
+            </div>
+            <span class="widget-hint">focus to preview tuned fold-down · render exports when ready</span>
+            <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <polyline points="18 15 12 9 6 15"></polyline>
+            </svg>
+          </div>
+          <div class="widget-body">
+            <div class="body-inner">
+              <section class="upmix-lab hidden" id="upmixLab" aria-label="Upmix tuning">
+                <div class="upmix-lab-head">
+                  <div class="title-block">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                      <path d="M4 8v8"></path><path d="M20 8v8"></path>
+                      <path d="M8 5v14"></path><path d="M16 5v14"></path>
+                      <path d="M11 10a3 3 0 0 1 2 0"></path>
+                      <path d="M9.5 14a5 5 0 0 0 5 0"></path>
+                    </svg>
+                    <h3>Upmix Lab</h3>
+                  </div>
+                  <strong id="upmixLabStatus">Idle</strong>
+                </div>
+                <div class="upmix-lab-body">
+                  <div class="upmix-preview">
+                    <canvas id="upmixPreviewCanvas" width="960" height="168"></canvas>
+                    <div class="upmix-meter-grid" aria-hidden="true">
+                      <span data-upmix-meter="front"><b></b><em>Front</em></span>
+                      <span data-upmix-meter="center"><b></b><em>Center</em></span>
+                      <span data-upmix-meter="side"><b></b><em>Side</em></span>
+                      <span data-upmix-meter="rear"><b></b><em>Rear</em></span>
+                      <span data-upmix-meter="height"><b></b><em>Height</em></span>
+                      <span data-upmix-meter="lfe"><b></b><em>LFE</em></span>
+                    </div>
+                  </div>
+                  <div class="upmix-side">
+                    <div class="upmix-controller-head">
+                      <h4>Controller</h4>
+                    </div>
+                    <div class="upmix-tabs" role="tablist" aria-label="Upmix settings">
+                      <button class="upmix-tab active" id="upmixTabTune" type="button" role="tab" aria-selected="true" aria-controls="upmixPanelTune" data-upmix-tab="tune">Tune</button>
+                      <button class="upmix-tab" id="upmixTabSafety" type="button" role="tab" aria-selected="false" aria-controls="upmixPanelSafety" data-upmix-tab="safety">Safety</button>
+                      <button class="upmix-tab" id="upmixTabRender" type="button" role="tab" aria-selected="false" aria-controls="upmixPanelRender" data-upmix-tab="render">Render</button>
+                    </div>
+                    <div class="upmix-tab-panels">
+                      <div class="upmix-tab-panel active" id="upmixPanelTune" role="tabpanel" aria-labelledby="upmixTabTune" data-upmix-panel="tune">
+                        <div class="upmix-controls">
+                          <label class="upmix-select-control">
+                            <span>Profile</span>
+                            <select id="upmixProfile">
+                              <option value="auto">Auto</option>
+                              <option value="front51">Forward</option>
+                            </select>
+                          </label>
+                          <label class="upmix-select-control">
+                            <span>LFE</span>
+                            <select id="upmixLfeMode">
+                              <option value="auto" selected>Auto</option>
+                              <option value="off">Off</option>
+                              <option value="light">Light</option>
+                              <option value="normal">Normal</option>
+                            </select>
+                          </label>
+                          <label class="upmix-range-control">
+                            <span>Space</span>
+                            <input id="upmixSpace" type="range" min="0" max="100" value="55" />
+                            <output data-upmix-output="space">55</output>
+                            <input id="upmixSpaceAuto" class="upmix-auto-toggle" type="checkbox" checked aria-label="Auto Space" title="Auto" />
+                          </label>
+                          <label class="upmix-range-control">
+                            <span>Height</span>
+                            <input id="upmixHeight" type="range" min="0" max="100" value="40" />
+                            <output data-upmix-output="height">40</output>
+                            <input id="upmixHeightAuto" class="upmix-auto-toggle" type="checkbox" checked aria-label="Auto Height" title="Auto" />
+                          </label>
+                          <label class="upmix-range-control">
+                            <span>Focus</span>
+                            <input id="upmixFocus" type="range" min="0" max="100" value="65" />
+                            <output data-upmix-output="focus">65</output>
+                            <input id="upmixFocusAuto" class="upmix-auto-toggle" type="checkbox" checked aria-label="Auto Focus" title="Auto" />
+                          </label>
+                          <label class="upmix-range-control">
+                            <span>Vocal</span>
+                            <input id="upmixVocal" type="range" min="-6" max="6" step="0.1" value="0" />
+                            <output data-upmix-output="vocal">0.0 dB</output>
+                            <input id="upmixVocalAuto" class="upmix-auto-toggle" type="checkbox" checked aria-label="Auto Vocal" title="Auto" />
+                          </label>
+                        </div>
+                        <div class="upmix-extra-controls" data-upmix-extra-group="tune"></div>
+                      </div>
+                      <div class="upmix-tab-panel" id="upmixPanelSafety" role="tabpanel" aria-labelledby="upmixTabSafety" data-upmix-panel="safety" hidden>
+                        <div class="upmix-controls">
+                          <label class="upmix-range-control">
+                            <span>Guard</span>
+                            <input id="upmixGuard" type="range" min="0" max="100" value="75" />
+                            <output data-upmix-output="guard">75</output>
+                            <input id="upmixGuardAuto" class="upmix-auto-toggle" type="checkbox" checked aria-label="Auto Guard" title="Auto" />
+                          </label>
+                          <label class="upmix-range-control">
+                            <span>Master</span>
+                            <input id="upmixMaster" type="range" min="25" max="120" value="84" />
+                            <output data-upmix-output="master">0.84</output>
+                            <input id="upmixMasterAuto" class="upmix-auto-toggle" type="checkbox" checked aria-label="Auto Master" title="Auto" />
+                          </label>
+                        </div>
+                        <div class="upmix-extra-controls" data-upmix-extra-group="safety"></div>
+                      </div>
+                      <div class="upmix-tab-panel" id="upmixPanelRender" role="tabpanel" aria-labelledby="upmixTabRender" data-upmix-panel="render" hidden>
+                        <div class="upmix-extra-controls" data-upmix-extra-group="render"></div>
+                        <div class="upmix-lab-actions">
+                          <button id="upmixRenderBtn" type="button">Render Upmix</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </section>
+
         <!-- ─ Widget: Mixer ─ -->
-        <section class="widget surface-panel" data-widget="mixer">
+        <section class="widget surface-panel" data-widget="mixer" data-workspace-section="mix" id="workspacePanelMixer">
           <div class="widget-head" role="button" tabindex="0" aria-expanded="true">
             <div class="title-block">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">

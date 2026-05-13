@@ -1,0 +1,19 @@
+format: bs-roformer-kai-sgi-de-limiter-v1
+weights: de_limiter_best.safetensors
+state_key: model_state_dict
+config:
+  sample_rate: 44100
+  channels: 2
+  condition_dim: 7
+  encoder_dim: 128
+  bottleneck_dim: 128
+  hidden_dim: 256
+  encoder_kernel_size: 64
+  encoder_stride: 32
+  tcn_kernel_size: 3
+  blocks: 5
+  repeats: 2
+  mask_init: 0.96
+training:
+  step: 21000
+  best_valid_loss: -19.43353268078395

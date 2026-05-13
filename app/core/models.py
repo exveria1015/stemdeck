@@ -14,7 +14,7 @@ class JobCancelled(Exception):
 class Job:
     id: str
     status: str = (
-        "queued"  # queued | downloading | analyzing | separating | done | error | cancelled
+        "queued"  # queued | downloading | analyzing | separating | upmixing | done | error | cancelled
     )
     progress: float = 0.0
     stage_message: str = "Queued"
@@ -34,6 +34,9 @@ class Job:
     # download a single track containing just their chosen stems.
     selected_stems: list[str] = field(default_factory=list)
     mix_url: str | None = None  # populated when a strict subset was selected
+    upmix_requested: bool = False
+    upmix_outputs: list[dict[str, Any]] = field(default_factory=list)
+    upmix_error: str | None = None
     source_url: str | None = None  # original URL or "local:<filename>" for file uploads
     error: str | None = None
     # Set by POST /api/jobs/{id}/cancel; consumed by pipeline stages.
@@ -61,6 +64,9 @@ class Job:
             "stems": self.stems,
             "selected_stems": self.selected_stems,
             "mix_url": self.mix_url,
+            "upmix_requested": self.upmix_requested,
+            "upmix_outputs": self.upmix_outputs,
+            "upmix_error": self.upmix_error,
             "source_url": self.source_url,
             "error": self.error,
         }

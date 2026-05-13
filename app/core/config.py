@@ -41,20 +41,40 @@ def _env_args(name: str) -> list[str]:
 def _detect_device(env_name: str) -> str:
     """Pick best available Torch device. Override with an env var
     containing 'cuda', 'mps', or 'cpu'. Apple Silicon silently falls back
-    to CPU otherwise."""
+    to CPU otherwise.
+
+    torch.cuda.is_available() can be true even when the installed wheel cannot
+    execute kernels for the visible GPU architecture. Smoke-test one simple CUDA
+    kernel before selecting cuda so unsupported GPUs fall back cleanly.
+    """
     forced = os.environ.get(env_name, "").strip().lower()
     if forced in ("cuda", "mps", "cpu"):
         return forced
     try:
         import torch
 
-        if torch.cuda.is_available():
+        if torch.cuda.is_available() and _cuda_kernel_smoke_ok(torch):
             return "cuda"
         if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
             return "mps"
     except ImportError:
         pass
     return "cpu"
+
+
+def _cuda_kernel_smoke_ok(torch_module: object) -> bool:
+    try:
+        x = torch_module.zeros((1, 1, 8), device="cuda")  # type: ignore[attr-defined]
+        torch_module.nn.functional.pad(  # type: ignore[attr-defined]
+            x,
+            (0, 1),
+            mode="constant",
+            value=0,
+        )
+        torch_module.cuda.synchronize()  # type: ignore[attr-defined]
+        return True
+    except Exception:
+        return False
 
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -132,6 +152,17 @@ RESIDUAL_ALLOCATOR_CHECKPOINT = _env_path_from(
 )
 RESIDUAL_ALLOCATOR_DEVICE = _detect_device("STEMDECK_RESIDUAL_ALLOCATOR_DEVICE")
 RESIDUAL_ALLOCATOR_ARGS = _env_args("STEMDECK_RESIDUAL_ALLOCATOR_ARGS")
+UPMIXER_DIR = _env_path_from(
+    "STEMDECK_UPMIXER_DIR",
+    ROOT / "vendor" / "Stems-Upmixer",
+    ROOT,
+)
+UPMIXER_SCRIPT = _env_path_from(
+    "STEMDECK_UPMIXER_SCRIPT",
+    UPMIXER_DIR / "upmix_cli.py",
+    ROOT,
+)
+UPMIXER_ARGS = _env_args("STEMDECK_UPMIXER_ARGS")
 MAX_DURATION_SEC = max(60, _env_int("STEMDECK_MAX_DURATION_SEC", 1200))  # 20 min default
 JOB_TTL_SECONDS = max(300, _env_int("STEMDECK_JOB_TTL_SECONDS", 24 * 3600))  # 24 h default
 MAX_PENDING_JOBS = max(1, min(50, _env_int("STEMDECK_MAX_PENDING_JOBS", 3)))

@@ -99,6 +99,22 @@ export function setStemSelected(name, selected) {
   saveSelectedStems();
 }
 
+const _UPMIX_KEY = "stemdeck:upmix-requested";
+function _loadUpmixRequested() {
+  try {
+    return localStorage.getItem(_UPMIX_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+export let upmixRequested = _loadUpmixRequested();
+export function setUpmixRequested(value) {
+  upmixRequested = Boolean(value);
+  try {
+    localStorage.setItem(_UPMIX_KEY, upmixRequested ? "1" : "0");
+  } catch { /* ignore */ }
+}
+
 // Web Audio analysers for live VU meters.
 export let audioContext = null;
 export let masterVolume = 0.5; // mirrored from masterFader.value

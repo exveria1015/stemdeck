@@ -24,6 +24,8 @@ from app.core.config import (
     RESIDUAL_ALLOCATOR_SCRIPT,
     SEPARATION_BACKEND,
     STATIC_DIR,
+    UPMIXER_DIR,
+    UPMIXER_SCRIPT,
     configure_portable_environment,
     ensure_runtime_dirs,
 )
@@ -116,6 +118,7 @@ def health() -> dict[str, object]:
         ),
         "demucs_model": DEMUCS_MODEL,
         "demucs_device": DEMUCS_DEVICE,
+        "upmixer_configured": UPMIXER_DIR.is_dir() and UPMIXER_SCRIPT.is_file(),
     }
 
 

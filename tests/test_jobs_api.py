@@ -55,6 +55,12 @@ def test_post_accepts_youtube_url(client):
     assert len(r.json()["job_id"]) == 12
 
 
+def test_post_accepts_youtube_upmix_flag(client):
+    r = client.post("/api/jobs", json={"url": "https://youtu.be/dQw4w9WgXcQ", "upmix": True})
+    assert r.status_code == 200
+    assert _jobs[r.json()["job_id"]].upmix_requested is True
+
+
 def test_get_unknown_job_returns_404(client):
     r = client.get("/api/jobs/000000000000")
     assert r.status_code == 404
@@ -104,6 +110,19 @@ def test_post_accepts_flac_upload(client, monkeypatch, tmp_path):
     assert r.status_code == 200
     job_id = r.json()["job_id"]
     assert (tmp_path / job_id / "source.flac").is_file()
+
+
+def test_post_accepts_upload_upmix_flag(client, monkeypatch, tmp_path):
+    monkeypatch.setattr("app.api.jobs.JOBS_DIR", tmp_path)
+
+    r = client.post(
+        "/api/jobs",
+        files={"file": ("song.flac", BytesIO(b"not really flac"), "audio/flac")},
+        data={"stems": "[]", "upmix": "1"},
+    )
+
+    assert r.status_code == 200
+    assert _jobs[r.json()["job_id"]].upmix_requested is True
 
 
 def test_post_upload_has_no_100mb_cap(client, monkeypatch, tmp_path):

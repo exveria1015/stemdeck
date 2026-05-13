@@ -42,7 +42,9 @@ If you find StemDeck useful, consider [buying the maker a coffee](https://buymea
 
 **"Original" backing track.** When you pick a subset, a 7th lane contains the complement (full song minus selected stems), perfect for A/B reference without doubling.
 
-**Downloadable selected mix.** A single `mix.wav` of just your selected stems, summed via ffmpeg amix.
+**Downloadable selected mix.** A single `mix.wav` of just your selected stems, summed by the Rust native audio helper when available, with FFmpeg kept as a fallback.
+
+**Optional surround upmix.** Enable **Upmix** before processing to run the vendored `vendor/Stems-Upmixer` pipeline after separation. The normal stem player still opens as usual, and the Information panel exposes the rendered 7.1.4 WAV, 5.1 FLAC, stereo FLAC, and Apple TV MP4 outputs when available.
 
 **Per-stem mixer** with volume fader, mute, solo, and "monitor" (solo-only) per stem. State syncs between the preview mixer and the stems sidebar.
 
@@ -97,7 +99,7 @@ Extract the zip anywhere, run `StemDeck.exe`. On first launch the app verifies t
 
 ## Technologies
 
-StemDeck is built on **[Python 3.10+](https://python.org)** managed via **[uv](https://github.com/astral-sh/uv)**, with a **[FastAPI](https://fastapi.tiangolo.com)** backend serving REST and Server-Sent Events. Stem separation uses the vendored **Residual Allocator** checkout at `vendor/Residual-Allocator` by default, or Demucs when `STEMDECK_SEPARATOR=demucs` is set. YouTube audio is fetched via **[yt-dlp](https://github.com/yt-dlp/yt-dlp)**; transcoding and mixing use **[FFmpeg](https://ffmpeg.org)**. BPM detection and key analysis run on **[librosa](https://librosa.org)**; loudness measurement uses **[pyloudnorm](https://github.com/csteinmetz1/pyloudnorm)** (ITU-R BS.1770). The Windows desktop shell is **[Tauri v2](https://tauri.app)** (Rust/WebView2). The frontend is vanilla JS with the Web Audio API, no framework and no build step; waveforms are rendered on `<canvas>` using min/max sample rendering.
+StemDeck is built on **[Python 3.10+](https://python.org)** managed via **[uv](https://github.com/astral-sh/uv)**, with a **[FastAPI](https://fastapi.tiangolo.com)** backend serving REST and Server-Sent Events. Stem separation uses the vendored **Residual Allocator** checkout at `vendor/Residual-Allocator` by default, or Demucs when `STEMDECK_SEPARATOR=demucs` is set. Optional surround rendering uses the vendored **Stems-Upmixer** checkout at `vendor/Stems-Upmixer`. YouTube audio is fetched via **[yt-dlp](https://github.com/yt-dlp/yt-dlp)**; WAV stem summing uses the Rust native audio helper, while FFmpeg remains available for codec/container routes such as non-WAV input preparation and Apple TV MP4. BPM detection and key analysis run on **[librosa](https://librosa.org)**; loudness measurement uses **[pyloudnorm](https://github.com/csteinmetz1/pyloudnorm)** (ITU-R BS.1770). The Windows desktop shell is **[Tauri v2](https://tauri.app)** (Rust/WebView2). The frontend is vanilla JS with the Web Audio API, no framework and no build step; waveforms are rendered on `<canvas>` using min/max sample rendering.
 
 *Thanks to the creators and maintainers of all the open-source libraries that make StemDeck possible.*
 
@@ -109,7 +111,7 @@ StemDeck is built on **[Python 3.10+](https://python.org)** managed via **[uv](h
 
 ### Prerequisites
 
-Python 3.10 or newer, `ffmpeg` on your PATH, and [uv](https://github.com/astral-sh/uv). By default StemDeck uses `vendor/Residual-Allocator` with its `weights/BS-Rofo-SW-Fixed.ckpt` and `weights/residual_allocator.safetensors` files present.
+Python 3.10 or newer, [uv](https://github.com/astral-sh/uv), and `ffmpeg` on your PATH for non-WAV import/transcode and Apple TV-style outputs. A Rust toolchain is optional in source builds; when present, StemDeck auto-builds `native_audio` for WAV stem summing and otherwise falls back to FFmpeg. By default StemDeck uses `vendor/Residual-Allocator` with its `weights/BS-Rofo-SW-Fixed.ckpt` and `weights/residual_allocator.safetensors` files present.
 
 ### macOS / Linux (one-shot)
 
@@ -153,9 +155,9 @@ Stems land in `./jobs/` on the host. Residual Allocator model files are read fro
 
 ## How to Use
 
-1. On the import bar, click stem chips to choose which stems to extract (defaults to all 6).
+1. On the import bar, click stem chips to choose which stems to extract (defaults to all 6). Enable **Upmix** when you also want surround exports after separation.
 2. Paste a YouTube URL **or** drop a supported audio file, then click **Process**.
-3. Wait through `Uploading...` / `Downloading...` → `Analyzing...` → `Separating...` → `Mixing tracks...`.
+3. Wait through `Uploading...` / `Downloading...` → `Analyzing...` → `Separating...` → `Mixing tracks...`; with **Upmix** enabled, the job continues through `Rendering surround upmix...`.
 4. When done, the studio dashboard appears. If you picked a subset, the first lane is **Original** (full song minus your selection); the rest are your isolated stems.
 5. Mix: **Play/Pause/Stop** controls the master transport. **M** mutes a stem, **S** solos it (additive; multiple solos stay audible), **Monitor** solos only that stem and clears others. The volume fader moves 1:1 with drag; double-click resets to 0 dB; `Shift+wheel` gives coarse adjustment and plain wheel gives fine. The **Reset**, **Mute**, and **Solo** toolbar buttons act on all stems at once.
 6. Drag on the ruler to define a loop region; click `Loop` to enable. Use `+` / `-` / `Fit` or `Ctrl/Cmd+wheel` to zoom.
@@ -175,6 +177,11 @@ Stems land in `./jobs/` on the host. Residual Allocator model files are read fro
 | `STEMDECK_RESIDUAL_ALLOCATOR_ARGS` | empty | Extra CLI arguments appended to `infer.py`. |
 | `STEMDECK_DEMUCS_DEVICE` | auto | Force Torch device: `cuda`, `mps`, or `cpu`. |
 | `STEMDECK_DEMUCS_MODEL` | `htdemucs_6s` | Demucs model name. |
+| `STEMDECK_UPMIXER_DIR` | `vendor/Stems-Upmixer` | Local Stems-Upmixer checkout used when the Upmix toggle is enabled. Relative paths are resolved from the StemDeck root. |
+| `STEMDECK_UPMIXER_SCRIPT` | `<upmixer dir>/upmix_cli.py` | Stems-Upmixer CLI entrypoint. |
+| `STEMDECK_UPMIXER_ARGS` | empty | Extra CLI arguments appended to `upmix_cli.py`, for example `--skip-bed --skip-apple-tv`. |
+| `STEMDECK_NATIVE_AUDIO_BIN` | auto-build from `native_audio` | Optional prebuilt `stemdeck-native-audio` helper used for WAV `original.wav` / `mix.wav` summing and native 7.1.4 bed rendering before falling back to FFmpeg. |
+| `STEMS_UPMIXER_RENDER_714_BACKEND` | `auto` | 7.1.4 bed renderer: `auto` uses Rust for stem pan/EQ/LFE, temporal automation, space-bed delay/allpass, and focus/priority sidechain ducking, then falls back to FFmpeg on helper failures; `native` fails instead of falling back; `ffmpeg` forces the legacy renderer. |
 | `STEMDECK_JOBS_DIR` | `./jobs` | Where job directories land. |
 | `STEMDECK_MAX_DURATION_SEC` | `1200` | Reject audio longer than this (seconds). |
 | `STEMDECK_JOB_TTL_SECONDS` | `86400` | How long to keep job dirs on disk. |
@@ -186,11 +193,12 @@ Stems land in `./jobs/` on the host. Residual Allocator model files are read fro
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/api/jobs` | JSON `{url, stems?}` or multipart `file + stems` → `{job_id}` |
+| POST | `/api/jobs` | JSON `{url, stems?, upmix?}` or multipart `file + stems + upmix` → `{job_id}` |
 | GET | `/api/jobs/{id}` | Job state snapshot |
 | GET | `/api/jobs/{id}/events` | SSE stream of job state |
 | POST | `/api/jobs/{id}/cancel` | Terminate active subprocess and cancel job |
 | GET | `/api/jobs/{id}/stems/{name}.wav` | Stream/download a single stem (range requests) |
+| GET | `/api/jobs/{id}/upmix/{filename}` | Stream/download an upmix output produced for that job |
 | DELETE | `/api/jobs/{id}` | Remove job dir from disk (terminal jobs only) |
 
 ---
@@ -215,7 +223,7 @@ Stems land in `./jobs/` on the host. Residual Allocator model files are read fro
 
 ```
 jobs/<job_id>/
-└── stems/
+├── stems/
     ├── vocals.wav      # the 6 separator stems (always present)
     ├── drums.wav
     ├── bass.wav
@@ -223,7 +231,12 @@ jobs/<job_id>/
     ├── piano.wav
     ├── other.wav
     ├── original.wav    # sum of un-selected stems (subset only)
-    └── mix.wav         # ffmpeg amix of selected stems (subset only)
+    └── mix.wav         # native Rust sum of selected stems, FFmpeg fallback (subset only)
+└── upmix/
+    ├── *_7.1.4_*.wav
+    ├── *_upmix5.1_*.flac
+    ├── *_stereo_*.flac
+    └── *_apple_tv.mp4
 ```
 
 Job state is in-memory. Restart the server and the job list resets, but files persist on disk. Old dirs are swept automatically (TTL 24 h, configurable).

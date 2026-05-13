@@ -1,0 +1,8 @@
+__pycache__
+*.pyc
+.cocoindex_code
+.ruff_cache
+.vscode
+.upmix_gui.json
+bin
+native_loudnorm/target

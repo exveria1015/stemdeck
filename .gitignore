@@ -23,6 +23,8 @@ dist/
 # Desktop build outputs
 desktop/node_modules/
 desktop/src-tauri/target/
+native_audio/target/
+vendor/Stems-Upmixer/native_loudnorm/target/
 desktop/src-tauri/gen/
 
 # Test / coverage / type-check caches

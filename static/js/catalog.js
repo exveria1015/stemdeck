@@ -2,6 +2,7 @@
 import { STEM_NAMES } from "./constants.js";
 import { wireUpAudio } from "./player.js";
 import { bpmChip, keyChip, saveSelectedStems, selectedStems, titleEl } from "./state.js";
+import { renderUpmixPanel } from "./upmix.js";
 
 const STORAGE_KEY = "stemdeck.folders";
 const STORAGE_VERSION = 2; // bump to wipe stale seeded data
@@ -15,7 +16,7 @@ let catalogSearchQuery = "";
 // ─── Persistence ───
 
 const TRASH_ID = "trash";
-const PROCESSING_STATUSES = new Set(["queued", "downloading", "analyzing", "separating", "processing"]);
+const PROCESSING_STATUSES = new Set(["queued", "downloading", "analyzing", "separating", "upmixing", "processing"]);
 const FOLDER_COLORS = ["#d8a84a", "#e85f6f", "#64c86f", "#4f9de8", "#a985f4"];
 const DEFAULT_FOLDER_COLOR = FOLDER_COLORS[0];
 const TRACK_DRAG_TYPE = "application/x-stemdeck-track";
@@ -199,6 +200,9 @@ function stateMetadataToTrack(state, fallbackTrack) {
     keyConfidence: state.key_confidence ?? fallbackTrack.keyConfidence,
     lufs: state.lufs ?? fallbackTrack.lufs,
     peakDb: state.peak_db ?? fallbackTrack.peakDb,
+    upmixRequested: state.upmix_requested ?? fallbackTrack.upmixRequested,
+    upmixOutputs: state.upmix_outputs ?? fallbackTrack.upmixOutputs ?? [],
+    upmixError: state.upmix_error ?? fallbackTrack.upmixError,
     sourceUrl: state.source_url || fallbackTrack.sourceUrl,
   };
 }
@@ -253,6 +257,11 @@ function applyTrackInfoToPanel(track) {
       if (summaryPeak) summaryPeak.textContent = Number(track.peakDb).toFixed(1);
     }
   }
+  renderUpmixPanel({
+    upmix_requested: track.upmixRequested,
+    upmix_outputs: track.upmixOutputs || [],
+    upmix_error: track.upmixError || null,
+  });
 }
 
 function moveTrackToTrash(trackId) {

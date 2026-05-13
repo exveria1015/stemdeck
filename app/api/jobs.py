@@ -122,6 +122,7 @@ class JobRequest(BaseModel):
     # rejected, so a future model with extra stems doesn't break older
     # clients pinning the old set.
     stems: list[str] | None = None
+    upmix: bool = False
 
 
 @router.post("")
@@ -155,7 +156,14 @@ async def _create_youtube_job(request: Request) -> dict[str, str]:
     if not selected:
         selected = list(STEM_NAMES)
 
-    job = registry_register(Job(id=uuid.uuid4().hex[:12], selected_stems=selected, source_url=url))
+    job = registry_register(
+        Job(
+            id=uuid.uuid4().hex[:12],
+            selected_stems=selected,
+            source_url=url,
+            upmix_requested=bool(payload.upmix),
+        )
+    )
     task = asyncio.create_task(run_pipeline(job, url, JOBS_DIR))
     task.add_done_callback(_task_error_cb)
     return {"job_id": job.id}
@@ -170,6 +178,7 @@ async def _create_local_job(request: Request) -> dict[str, str]:
     form = await request.form()
     upload = form.get("file")
     stems_raw = form.get("stems", "[]")
+    upmix_raw = str(form.get("upmix", "")).strip().lower()
 
     if upload is None or not hasattr(upload, "filename"):
         raise HTTPException(status_code=422, detail="No file provided")
@@ -190,6 +199,7 @@ async def _create_local_job(request: Request) -> dict[str, str]:
     except (json.JSONDecodeError, ValueError):
         stems_list = []
     selected = [s for s in stems_list if s in STEM_NAMES] or list(STEM_NAMES)
+    upmix_requested = upmix_raw in {"1", "true", "yes", "on"}
 
     # Check actual file size (SpooledTemporaryFile is already buffered at this
     # point; seek/tell are fast and don't re-read the body).
@@ -233,6 +243,7 @@ async def _create_local_job(request: Request) -> dict[str, str]:
             title=title,
             duration_sec=duration,
             source_url=local_source_url,
+            upmix_requested=upmix_requested,
         )
     )
     task = asyncio.create_task(run_local_pipeline(job, source_path, JOBS_DIR))
