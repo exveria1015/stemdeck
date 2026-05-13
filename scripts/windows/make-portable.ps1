@@ -173,6 +173,9 @@ if ($CpuOnly) {
 
 Copy-Tree (Join-Path $Root "app") (Join-Path $BackendDir "app")
 Copy-Tree (Join-Path $Root "static") (Join-Path $BackendDir "static")
+if (Test-Path (Join-Path $Root "vendor")) {
+  Copy-Tree (Join-Path $Root "vendor") (Join-Path $BackendDir "vendor")
+}
 $PackageVersion = Get-PackageVersion
 $VersionJson = @{ version = $PackageVersion } | ConvertTo-Json -Compress
 $utf8NoBom = New-Object System.Text.UTF8Encoding $false
@@ -201,7 +204,7 @@ if ($CpuOnly) {
       --force-reinstall --no-deps
 }
 
-& $PythonExe -c "import fastapi, uvicorn, yt_dlp, demucs, torch, torchaudio, librosa, pyloudnorm, soundfile"
+& $PythonExe -c "import fastapi, uvicorn, yt_dlp, demucs, torch, torchaudio, librosa, pyloudnorm, soundfile, ml_collections, omegaconf, yaml, tqdm, einops, beartype, rotary_embedding_torch, safetensors"
 
 Bundle-PythonRuntime $PythonDir $PythonExe
 & $PythonExe -c "import sys, fastapi, uvicorn; print('Portable Python:', sys.executable)"

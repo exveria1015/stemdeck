@@ -1,14 +1,21 @@
 import {
   playBtn, loopBtn, multitrack, loopEnabled, loopStart, loopEnd,
   setLoopStart, setLoopEnd, selectedStems, saveSelectedStems,
+  upmixRequested, setUpmixRequested,
 } from "./state.js";
 import { STEM_NAMES } from "./constants.js";
 import { renderEmptyShell, buildStripStems } from "./player.js";
 import { wireJobForm } from "./job.js";
-import { wireTransportButtons } from "./transport.js";
-import { togglePlayPause, updateLoopRegionVisual } from "./transport.js";
+import {
+  getActiveTransportTime,
+  nudgeTransport,
+  togglePlayPause,
+  updateLoopRegionVisual,
+  wireTransportButtons,
+} from "./transport.js";
 import { wireStemListControls, wireMixerToolbar } from "./mixer.js";
 import { initCatalog } from "./catalog.js";
+import { setPlaybackFocusMode } from "./upmix.js";
 
 // ─── Stem choice toggles on the import page ───
 //
@@ -65,6 +72,68 @@ function wireStemChoiceButtons() {
   }
 }
 
+function refreshUpmixChoiceVisual() {
+  const btn = document.getElementById("upmixChoice");
+  if (!btn) return;
+  btn.setAttribute("aria-pressed", String(upmixRequested));
+}
+
+function wireUpmixChoiceButton() {
+  const btn = document.getElementById("upmixChoice");
+  if (!btn) return;
+  refreshUpmixChoiceVisual();
+  btn.addEventListener("click", () => {
+    setUpmixRequested(!upmixRequested);
+    refreshUpmixChoiceVisual();
+    buildStripStems();
+  });
+}
+
+const WORKSPACE_TAB_KEY = "stemdeck.workspace.tab";
+
+function setWorkspaceTab(tab, { focusTab = false, persist = true } = {}) {
+  const next = tab === "upmix" ? "upmix" : "mix";
+  const app = document.querySelector(".app");
+  app?.setAttribute("data-workspace-tab", next);
+
+  for (const btn of document.querySelectorAll("[data-workspace-tab]")) {
+    const active = btn.dataset.workspaceTab === next;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-selected", String(active));
+    btn.tabIndex = active ? 0 : -1;
+    if (active && focusTab) btn.focus();
+  }
+
+  if (persist) {
+    try { localStorage.setItem(WORKSPACE_TAB_KEY, next); } catch { /* ignore */ }
+  }
+  setPlaybackFocusMode(next === "upmix" ? "upmix" : "waveform");
+}
+
+function wireWorkspaceTabs() {
+  const tabs = [...document.querySelectorAll("[data-workspace-tab]")];
+  if (!tabs.length) return;
+  for (const btn of tabs) {
+    btn.addEventListener("click", () => setWorkspaceTab(btn.dataset.workspaceTab));
+    btn.addEventListener("keydown", (event) => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.code)) return;
+      event.preventDefault();
+      const current = tabs.indexOf(btn);
+      let nextIndex = current;
+      if (event.code === "Home") nextIndex = 0;
+      else if (event.code === "End") nextIndex = tabs.length - 1;
+      else nextIndex = (current + (event.code === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+      setWorkspaceTab(tabs[nextIndex].dataset.workspaceTab, { focusTab: true });
+    });
+  }
+  let initial = "mix";
+  try {
+    const saved = localStorage.getItem(WORKSPACE_TAB_KEY);
+    if (saved === "upmix" || saved === "mix") initial = saved;
+  } catch { /* ignore */ }
+  setWorkspaceTab(initial, { persist: false });
+}
+
 // ─── Wire everything up ───
 
 wireJobForm();
@@ -72,6 +141,8 @@ wireTransportButtons();
 wireStemListControls();
 wireMixerToolbar();
 wireStemChoiceButtons();
+wireUpmixChoiceButton();
+wireWorkspaceTabs();
 initCatalog();
 wireFileDrop();
 wireAppShellControls();
@@ -95,8 +166,9 @@ function wireFileDrop() {
   function applyFile(file) {
     if (!file) return;
     const lower = file.name.toLowerCase();
-    if (!lower.endsWith(".mp3") && !lower.endsWith(".wav")) {
-      alert("Only MP3 and WAV files are supported.");
+    const supported = [".aac", ".aif", ".aiff", ".flac", ".m4a", ".mp3", ".ogg", ".opus", ".wav"];
+    if (!supported.some((ext) => lower.endsWith(ext))) {
+      alert("Supported audio files: AAC, AIFF, FLAC, M4A, MP3, OGG, OPUS, and WAV.");
       return;
     }
     if (fileName) fileName.textContent = file.name;
@@ -155,28 +227,31 @@ function wireAppShellControls() {
 
 document.addEventListener("keydown", (e) => {
   if (!multitrack) return;
-  if (e.target instanceof HTMLInputElement) return;
+  if (
+    e.target instanceof HTMLInputElement
+    || e.target instanceof HTMLSelectElement
+    || e.target instanceof HTMLTextAreaElement
+    || e.target?.isContentEditable
+  ) return;
   if (e.code === "Space") {
     e.preventDefault();
     togglePlayPause();
   } else if (e.code === "BracketLeft") {
     e.preventDefault();
-    multitrack.setTime(Math.max(0, multitrack.getCurrentTime() - 5));
+    nudgeTransport(-5);
   } else if (e.code === "BracketRight") {
     e.preventDefault();
-    multitrack.setTime(
-      Math.min(multitrack.getDuration(), multitrack.getCurrentTime() + 5),
-    );
+    nudgeTransport(5);
   } else if (e.code === "KeyL") {
     e.preventDefault();
     loopBtn.click();
   } else if (e.code === "KeyI" && loopEnabled && multitrack) {
     e.preventDefault();
-    setLoopStart(Math.min(multitrack.getCurrentTime(), loopEnd - 0.5));
+    setLoopStart(Math.min(getActiveTransportTime(), loopEnd - 0.5));
     updateLoopRegionVisual();
   } else if (e.code === "KeyO" && loopEnabled && multitrack) {
     e.preventDefault();
-    setLoopEnd(Math.max(multitrack.getCurrentTime(), loopStart + 0.5));
+    setLoopEnd(Math.max(getActiveTransportTime(), loopStart + 0.5));
     updateLoopRegionVisual();
   }
 });
@@ -184,7 +259,7 @@ document.addEventListener("keydown", (e) => {
 // ─── External links ───
 
 document.addEventListener("click", (e) => {
-  const dl = e.target.closest("a.lane-dl");
+  const dl = e.target.closest("a.lane-dl, a.upmix-dl");
   if (dl?.href) {
     const openUrl = window.__TAURI__?.core?.invoke;
     if (openUrl) {

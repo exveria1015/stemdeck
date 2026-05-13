@@ -130,9 +130,8 @@ def download(job: Job, url: str, job_dir: Path) -> Path:
         elif d.get("status") == "finished":
             _set(job, progress=1.0, stage="Download complete")
 
-    # No postprocessors -- Demucs reads the raw audio container (webm/m4a/opus/...)
-    # directly via torchaudio + ffmpeg. Skipping the WAV transcode saves the slowest
-    # part of the download pipeline and a lot of disk.
+    # No postprocessors here. The separator stage converts to WAV only when
+    # its backend needs it, which avoids paying the transcode cost twice.
     ydl_opts = {
         "format": "bestaudio/best",
         "outtmpl": str(job_dir / "source.%(ext)s"),

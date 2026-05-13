@@ -33,8 +33,20 @@ from app.pipeline.download import InvalidYouTubeURL, validate_youtube_url
 router = APIRouter(tags=["jobs"])
 logger = logging.getLogger("stemdeck.api")
 
-_ALLOWED_EXTS = frozenset((".mp3", ".wav"))
-_MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
+_ALLOWED_EXTS = frozenset(
+    (
+        ".aac",
+        ".aif",
+        ".aiff",
+        ".flac",
+        ".m4a",
+        ".mp3",
+        ".ogg",
+        ".opus",
+        ".wav",
+    )
+)
+_ALLOWED_EXTS_LABEL = ", ".join(sorted(_ALLOWED_EXTS))
 _WS_RE = re.compile(r"\s+")
 
 
@@ -110,6 +122,7 @@ class JobRequest(BaseModel):
     # rejected, so a future model with extra stems doesn't break older
     # clients pinning the old set.
     stems: list[str] | None = None
+    upmix: bool = False
 
 
 @router.post("")
@@ -143,7 +156,14 @@ async def _create_youtube_job(request: Request) -> dict[str, str]:
     if not selected:
         selected = list(STEM_NAMES)
 
-    job = registry_register(Job(id=uuid.uuid4().hex[:12], selected_stems=selected, source_url=url))
+    job = registry_register(
+        Job(
+            id=uuid.uuid4().hex[:12],
+            selected_stems=selected,
+            source_url=url,
+            upmix_requested=bool(payload.upmix),
+        )
+    )
     task = asyncio.create_task(run_pipeline(job, url, JOBS_DIR))
     task.add_done_callback(_task_error_cb)
     return {"job_id": job.id}
@@ -155,19 +175,10 @@ async def _create_local_job(request: Request) -> dict[str, str]:
     if pending >= MAX_PENDING_JOBS:
         raise HTTPException(status_code=503, detail="Server busy, please try again later")
 
-    # Quick pre-check on Content-Length to fail fast for obviously oversized
-    # uploads without buffering the whole body first.
-    cl_header = request.headers.get("content-length")
-    if cl_header:
-        try:
-            if int(cl_header) > _MAX_UPLOAD_BYTES + 4096:
-                raise HTTPException(status_code=422, detail="File exceeds 100 MB limit")
-        except ValueError:
-            pass
-
     form = await request.form()
     upload = form.get("file")
     stems_raw = form.get("stems", "[]")
+    upmix_raw = str(form.get("upmix", "")).strip().lower()
 
     if upload is None or not hasattr(upload, "filename"):
         raise HTTPException(status_code=422, detail="No file provided")
@@ -177,7 +188,7 @@ async def _create_local_job(request: Request) -> dict[str, str]:
     if ext not in _ALLOWED_EXTS:
         raise HTTPException(
             status_code=422,
-            detail=f"Unsupported file type '{ext}': only .mp3 and .wav are accepted",
+            detail=f"Unsupported file type '{ext}': accepted extensions are {_ALLOWED_EXTS_LABEL}",
         )
 
     # Validate stems list from form field
@@ -188,6 +199,7 @@ async def _create_local_job(request: Request) -> dict[str, str]:
     except (json.JSONDecodeError, ValueError):
         stems_list = []
     selected = [s for s in stems_list if s in STEM_NAMES] or list(STEM_NAMES)
+    upmix_requested = upmix_raw in {"1", "true", "yes", "on"}
 
     # Check actual file size (SpooledTemporaryFile is already buffered at this
     # point; seek/tell are fast and don't re-read the body).
@@ -195,8 +207,6 @@ async def _create_local_job(request: Request) -> dict[str, str]:
     file_size = await asyncio.to_thread(_check_file_size, file_obj)
     if file_size == 0:
         raise HTTPException(status_code=422, detail="Uploaded file is empty")
-    if file_size > _MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=422, detail="File exceeds 100 MB limit")
 
     job_id = uuid.uuid4().hex[:12]
     job_dir = JOBS_DIR / job_id
@@ -233,6 +243,7 @@ async def _create_local_job(request: Request) -> dict[str, str]:
             title=title,
             duration_sec=duration,
             source_url=local_source_url,
+            upmix_requested=upmix_requested,
         )
     )
     task = asyncio.create_task(run_local_pipeline(job, source_path, JOBS_DIR))

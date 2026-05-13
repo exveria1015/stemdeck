@@ -50,5 +50,12 @@ export const stagePhrases = {
     "Snare too snappy…",
     "Levels look good…",
   ],
+  upmixing: [
+    "Opening the room…",
+    "Placing the height bed…",
+    "Checking the surround fold…",
+    "Printing the 5.1 master…",
+    "Preparing export files…",
+  ],
   default: ["Working on it…"],
 };

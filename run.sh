@@ -5,7 +5,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-HOST="${HOST:-127.0.0.1}"
+HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-8000}"
 RELOAD="${RELOAD:-0}"
 FOREGROUND="${FOREGROUND:-0}"
@@ -68,8 +68,9 @@ stop() {
         echo "force-killing pid $pid"
         kill -9 "$pid" 2>/dev/null || true
     fi
-    # kill any in-flight demucs children spawned by the app
+    # kill any in-flight separator children spawned by the app
     pkill -f "python -m demucs" 2>/dev/null || true
+    pkill -f "Residual-Allocator/infer.py" 2>/dev/null || true
     rm -f "$PID_FILE"
     echo "stopped"
 }

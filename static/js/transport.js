@@ -9,6 +9,15 @@ import {
   setLoopEnabled, setLoopStart, setLoopEnd, setMasterVolume, setWaveZoom,
 } from "./state.js";
 import { applyMix } from "./mixer.js";
+import {
+  getPlaybackFocusMode,
+  getUpmixPreviewTime,
+  isUpmixPreviewPlaying,
+  pauseUpmixPreview,
+  playUpmixPreview,
+  seekUpmixPreview,
+  stopUpmixPreview,
+} from "./upmix.js";
 
 const MIN_LOOP_SEC = 0.2;
 const ZOOM_MIN = 1;
@@ -168,13 +177,55 @@ export function updateLoopRegionVisual() {
 //                          [stopped]
 //
 // Play button is a Play/Pause toggle. Stop both pauses and returns the
-// playhead to 0 (or loopStart if loop is on). Visual state is driven
-// from the multitrack lifecycle events in player.js (mt.on play/pause/
-// timeupdate) — click handlers only mutate the transport, never the
-// button's CSS class. That way manual seeks (e.g. clicking the ruler)
-// keep the button states in sync without extra plumbing.
-export function togglePlayPause() {
+// active playhead to 0 (or loopStart for the waveform transport). Normal
+// waveform visuals are still driven by the Multitrack lifecycle events in
+// player.js; the Upmix preview has its own Web Audio clock, so its button
+// state is mirrored from the active playback focus here.
+function updateFocusedTransportVisual() {
+  const upmixFocused = getPlaybackFocusMode() === "upmix";
+  const playing = upmixFocused
+    ? isUpmixPreviewPlaying()
+    : Boolean(multitrack?.isPlaying?.());
+  playBtn.classList.toggle("playing", playing);
+
+  const t = upmixFocused
+    ? getUpmixPreviewTime()
+    : (multitrack?.getCurrentTime?.() || 0);
+  const startPos = upmixFocused ? 0 : (loopEnabled ? loopStart : 0);
+  stopBtn.classList.toggle("stopped", !playing && Math.abs(t - startPos) < 0.15);
+}
+
+export function getActiveTransportTime() {
+  if (getPlaybackFocusMode() === "upmix") return getUpmixPreviewTime();
+  return multitrack?.getCurrentTime?.() || 0;
+}
+
+export function nudgeTransport(deltaSec) {
+  if (getPlaybackFocusMode() === "upmix") {
+    seekUpmixPreview(deltaSec);
+    updateFocusedTransportVisual();
+    return;
+  }
   if (!multitrack) return;
+  const dur = multitrack.getDuration?.() || totalDuration || 0;
+  multitrack.setTime(Math.max(0, Math.min(dur, multitrack.getCurrentTime() + deltaSec)));
+}
+
+export function togglePlayPause() {
+  if (getPlaybackFocusMode() === "upmix") {
+    if (isUpmixPreviewPlaying()) {
+      pauseUpmixPreview();
+      updateFocusedTransportVisual();
+      return;
+    }
+    playUpmixPreview().then(updateFocusedTransportVisual).catch(() => {
+      pauseUpmixPreview();
+      updateFocusedTransportVisual();
+    });
+    return;
+  }
+  if (!multitrack) return;
+  pauseUpmixPreview({ emit: false });
   if (multitrack.isPlaying()) {
     multitrack.pause();
     return;
@@ -194,7 +245,13 @@ export function togglePlayPause() {
 }
 
 export function stopTransport() {
+  if (getPlaybackFocusMode() === "upmix") {
+    stopUpmixPreview();
+    updateFocusedTransportVisual();
+    return;
+  }
   if (!multitrack) return;
+  pauseUpmixPreview({ emit: false });
   multitrack.pause();
   multitrack.setTime(loopEnabled ? loopStart : 0);
 }
@@ -399,6 +456,8 @@ export function wireTransportButtons() {
   playMiniBtn?.addEventListener("click", togglePlayPause);
   stopBtn.addEventListener("click", stopTransport);
   loopBtn.addEventListener("click", toggleLoop);
+  window.addEventListener("stemdeck:playback-focus-change", updateFocusedTransportVisual);
+  window.addEventListener("stemdeck:upmix-preview-state", updateFocusedTransportVisual);
   wireLoopDrag();
   wireZoomButtons();
   masterFader?.addEventListener("input", () => {

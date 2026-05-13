@@ -13,6 +13,7 @@ from app.pipeline.analyze import analyze
 from app.pipeline.collect import cleanup_source, collect, make_original_track, make_selected_mix
 from app.pipeline.download import _set, download
 from app.pipeline.separate import separate
+from app.pipeline.upmix import run_upmix
 
 logger = logging.getLogger("stemdeck.pipeline")
 
@@ -26,7 +27,7 @@ def _rmtree(path: Path) -> None:
         logger.warning("failed to remove %s", path, exc_info=True)
 
 
-# Only one heavy job runs at a time -- Demucs is GPU/CPU-hungry.
+# Only one heavy job runs at a time -- separation is GPU/CPU-hungry.
 _pipeline_lock = asyncio.Semaphore(1)
 
 
@@ -36,12 +37,13 @@ def _check_cancel(job: Job) -> None:
 
 
 def _prepare_local_source(job: Job, source: Path, job_dir: Path) -> Path:
-    """Transcode an MP3 local upload to 16-bit 44.1 kHz stereo WAV before
-    handing it to Demucs. Avoids silent failures from VBR MP3, non-standard
-    sample rates, or unusual channel layouts. WAV uploads are used as-is.
+    """Transcode non-WAV local uploads to 16-bit 44.1 kHz stereo WAV before
+    handing them to the separator. Avoids silent failures from compressed
+    codecs, non-standard sample rates, or unusual channel layouts. WAV uploads
+    are used as-is.
 
-    Deletes the original source.mp3 after a successful transcode."""
-    if source.suffix.lower() != ".mp3":
+    Deletes the original upload after a successful transcode."""
+    if source.suffix.lower() == ".wav":
         return source
 
     from app.core.config import ffmpeg_executable
@@ -82,10 +84,6 @@ def _run_common(job: Job, source: Path, job_dir: Path) -> None:
     stems_root = separate(job, source, job_dir)
     found = collect(job, stems_root, job_dir)
     stems_dir = job_dir / "stems"
-    # Source (100-300 MB or the local upload) is no longer needed after
-    # collect; delete it before the ffmpeg amix steps in case scratch space
-    # is tight.
-    cleanup_source(job_dir)
     job.stems = [{"name": name, "url": f"/api/jobs/{job.id}/stems/{name}.wav"} for name in found]
     _check_cancel(job)
     _set(job, stage="Mixing tracks...")
@@ -102,6 +100,21 @@ def _run_common(job: Job, source: Path, job_dir: Path) -> None:
     mix_path = make_selected_mix(job, stems_dir, found)
     if mix_path is not None:
         job.mix_url = f"/api/jobs/{job.id}/stems/{mix_path.name}"
+    _check_cancel(job)
+    if job.upmix_requested:
+        try:
+            job.upmix_outputs = run_upmix(job, source, job_dir, found)
+            job.upmix_error = None
+        except JobCancelled:
+            raise
+        except Exception as exc:
+            logger.exception("upmix failed for job %s: %s", job.id, exc)
+            job.upmix_outputs = []
+            job.upmix_error = str(exc)
+            _set(job, stage="Upmix failed; stems are ready")
+    # Source audio is no longer needed after all post-processing. Keep it
+    # through upmixing because Stems-Upmixer uses it for metadata and guards.
+    cleanup_source(job_dir)
     _check_cancel(job)
 
 
@@ -128,6 +141,9 @@ def _write_metadata(job: Job, job_dir: Path) -> None:
         "key_confidence": job.key_confidence,
         "lufs": job.lufs,
         "peak_db": job.peak_db,
+        "upmix_requested": job.upmix_requested,
+        "upmix_outputs": job.upmix_outputs,
+        "upmix_error": job.upmix_error,
     }
     try:
         (job_dir / "metadata.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")

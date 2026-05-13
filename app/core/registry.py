@@ -12,7 +12,7 @@ from app.core.models import Job
 logger = logging.getLogger("stemdeck.registry")
 
 _jobs: dict[str, Job] = {}
-# Active subprocesses keyed by job_id (currently only Demucs). Lets
+# Active subprocesses keyed by job_id. Lets
 # POST /cancel terminate the running process from the API thread instead
 # of waiting for the pipeline thread to notice the cancel flag.
 _procs: dict[str, subprocess.Popen] = {}
@@ -109,6 +109,9 @@ def _recover_done_job(job_dir: Path) -> Job | None:
     mix_url = None
     if (stems_dir / "mix.wav").is_file():
         mix_url = f"/api/jobs/{job_dir.name}/stems/mix.wav"
+    from app.pipeline.upmix import discover_upmix_outputs
+
+    upmix_outputs = discover_upmix_outputs(job_dir.name, job_dir / "upmix")
     selected = [stem["name"] for stem in stems if stem["name"] in STEM_NAMES] or list(STEM_NAMES)
     meta_path = job_dir / "metadata.json"
     if not meta_path.is_file():
@@ -126,6 +129,9 @@ def _recover_done_job(job_dir: Path) -> Job | None:
         stems=stems,
         selected_stems=selected,
         mix_url=mix_url,
+        upmix_requested=bool(upmix_outputs or meta.get("upmix_requested")),
+        upmix_outputs=upmix_outputs,
+        upmix_error=meta.get("upmix_error"),
         created_at=job_dir.stat().st_mtime,
         title=meta.get("title"),
         thumbnail=meta.get("thumbnail"),

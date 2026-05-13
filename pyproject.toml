@@ -8,15 +8,23 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "yt-dlp>=2024.12.0",
     "demucs>=4.0.1",
-    # Pin torch/torchaudio to 2.6.x — torchaudio 2.7+ removed its built-in
-    # audio writer and now requires the separate `torchcodec` package, which
-    # has ABI issues with torch 2.11. Demucs 4.0.1 calls torchaudio.save() to
-    # write stems, so it breaks on 2.7+.
-    "torch>=2.6,<2.7",
-    "torchaudio>=2.6,<2.7",
-    # torchaudio 2.6 dispatches WAV writes through libsndfile via soundfile.
-    # Without this, demucs crashes on save with "Couldn't find appropriate
-    # backend to handle uri ... drums.wav".
+    "ml_collections>=0.1.1",
+    "omegaconf>=2.2",
+    "PyYAML>=6.0",
+    "tqdm>=4.66",
+    "einops>=0.8.1",
+    "beartype>=0.14.1",
+    "rotary_embedding_torch>=0.3.5",
+    "packaging>=24.0",
+    "safetensors>=0.4",
+    # CUDA 13.0 wheels are required for Blackwell GPUs (sm_120). uv sources
+    # below restrict the PyTorch index to torch/torchaudio only.
+    "torch==2.10.0",
+    "torchaudio==2.10.0",
+    # torchaudio 2.7+ routes save() through TorchCodec; demucs still calls
+    # torchaudio.save() when writing stems.
+    "torchcodec>=0.10,<0.11",
+    # soundfile is still used by the residual allocator/librosa path.
     "soundfile>=0.12",
     # BPM + key analysis on the downloaded source. Pulls numpy/scipy/numba.
     "librosa>=0.10",
@@ -41,13 +49,22 @@ dev = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.uv.sources]
+torch = { index = "pytorch-cu130" }
+torchaudio = { index = "pytorch-cu130" }
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
 
 [tool.ruff]
 target-version = "py310"
 line-length = 100
-exclude = ["jobs", ".run", "static/vendor"]
+exclude = ["jobs", ".run", "static/vendor", "vendor/Residual-Allocator"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM"]

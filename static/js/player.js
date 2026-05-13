@@ -13,7 +13,7 @@ import {
   masterVolume, masterFader, mixerState,
   setMultitrack, setCurrentJobId, setTrackIndex, setTotalDuration,
   setLoopEnabled, setLoopStart, setLoopEnd, setMasterVolume,
-  setWaveZoom, waveScroll, selectedStems,
+  setWaveZoom, waveScroll, selectedStems, upmixRequested,
 } from "./state.js";
 import {
   loadMixIntoState, resetMixerState, refreshMixerVisuals,
@@ -27,6 +27,7 @@ import {
   updatePresencePlayhead,
 } from "./transport.js";
 import { stopVuLoop } from "./audio.js";
+import { prepareUpmixLab, resetUpmixLab, resetUpmixPanel } from "./upmix.js";
 
 // Stem-selection filter: the import-page stem-choice toggles set
 // selectedStems (state.js). Backend always processes all 6 -- we
@@ -514,6 +515,8 @@ export function destroyPlayer() {
   stemsChip.textContent = "\u2014 Stems";
   timeEl.textContent = "00:00 / 00:00";
   resetAnalysisCards();
+  resetUpmixPanel();
+  resetUpmixLab();
 
   trackAnalysers.length = 0;
   for (const row of document.querySelectorAll(".energy-row")) {
@@ -557,6 +560,8 @@ export function renderEmptyShell() {
   stemsChip.textContent = "\u2014 Stems";
   timeEl.textContent = "00:00 / 00:00";
   resetAnalysisCards();
+  resetUpmixPanel();
+  resetUpmixLab();
   renderPlaceholderTracks();
   clearOverviewWaveforms();
   setLaneControlsEnabled(false);
@@ -603,6 +608,17 @@ export function buildStripStems() {
     if (srcSvg) sq.appendChild(srcSvg.cloneNode(true));
     container.appendChild(sq);
   }
+  const upmix = document.createElement("div");
+  upmix.className = "strip-sq strip-sq-upmix" + (upmixRequested ? "" : " inactive");
+  upmix.innerHTML = `
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <path d="M4 8v8"></path><path d="M20 8v8"></path>
+      <path d="M8 5v14"></path><path d="M16 5v14"></path>
+      <path d="M11 10a3 3 0 0 1 2 0"></path>
+      <path d="M9.5 14a5 5 0 0 0 5 0"></path>
+    </svg>
+  `;
+  container.appendChild(upmix);
 }
 
 export function wireUpAudio(jobId, stems, duration, thumbnail) {
@@ -649,6 +665,7 @@ export function wireUpAudio(jobId, stems, duration, thumbnail) {
   // the user selected all 6 stems, the backend doesn't produce
   // original.wav, so it's simply not in `stems` and the mixer/sidebar
   // rows for it stay hidden.)
+  const upmixStemSources = stems.filter((s) => STEM_NAMES.includes(s.name));
   stems = stems.filter((s) => s.name === "original" || selectedStems.has(s.name));
   applyStemSelectionFilter(new Set(stems.map((s) => s.name)));
 
@@ -672,6 +689,7 @@ export function wireUpAudio(jobId, stems, duration, thumbnail) {
 
   clearOverviewWaveforms();
   renderAllDecodedVisuals(stems, token);
+  prepareUpmixLab(jobId, upmixStemSources);
 
   setTrackIndex(Object.fromEntries(stems.map((s, i) => [s.name, i])));
   multitrackContainer.innerHTML = "";

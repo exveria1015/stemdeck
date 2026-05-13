@@ -117,6 +117,17 @@
 }
 .strip-sq-stem:hover { opacity: 0.85 !important; }
 .strip-sq-stem.inactive { opacity: 0.2; }
+.strip-sq-upmix {
+  border-color: rgba(79, 157, 232, 0.42);
+  background: rgba(79, 157, 232, 0.12);
+  color: #79b8f2;
+}
+.strip-sq-upmix.inactive {
+  opacity: 0.25;
+  color: var(--ink-faint);
+  background: rgba(255,255,255,0.03);
+  border-color: var(--glass-line);
+}
 .strip-sq-process {
   background: linear-gradient(180deg, var(--gold-bright) 0%, var(--gold) 100%);
   color: #17130c;
@@ -300,7 +311,7 @@
 }
 
 .appbar-import-panel .stem-choice-row {
-  grid-template-columns: clamp(110px, 11vw, 156px) repeat(6, minmax(0, 1fr));
+  grid-template-columns: clamp(110px, 11vw, 156px) repeat(7, minmax(0, 1fr));
   gap: clamp(8px, 1vw, 14px);
   padding-top: 20px;
 }
@@ -317,6 +328,10 @@
   background:
     linear-gradient(180deg, color-mix(in srgb, currentColor 9%, transparent), transparent),
     rgba(8, 15, 22, 0.42);
+}
+
+.appbar-import-panel .upmix-choice {
+  color: #4f9de8;
 }
 
 .url-wrap {

@@ -17,7 +17,15 @@ from app.core.config import (
     DEMUCS_MODEL,
     FFMPEG_BIN,
     JOBS_DIR,
+    RESIDUAL_ALLOCATOR_BASE_CHECKPOINT,
+    RESIDUAL_ALLOCATOR_CHECKPOINT,
+    RESIDUAL_ALLOCATOR_DEVICE,
+    RESIDUAL_ALLOCATOR_DIR,
+    RESIDUAL_ALLOCATOR_SCRIPT,
+    SEPARATION_BACKEND,
     STATIC_DIR,
+    UPMIXER_DIR,
+    UPMIXER_SCRIPT,
     configure_portable_environment,
     ensure_runtime_dirs,
 )
@@ -29,7 +37,14 @@ from app.pipeline.collect import sweep_old_jobs
 # logger.info(...) call across the app, including the analyze
 # diagnostics ("chroma:", "key candidates:").
 logging.getLogger("stemdeck").setLevel(logging.INFO)
-logging.getLogger("stemdeck").info("demucs config: model=%s device=%s", DEMUCS_MODEL, DEMUCS_DEVICE)
+logging.getLogger("stemdeck").info(
+    "separator config: backend=%s residual_allocator_dir=%s residual_allocator_device=%s demucs_model=%s demucs_device=%s",
+    SEPARATION_BACKEND,
+    RESIDUAL_ALLOCATOR_DIR,
+    RESIDUAL_ALLOCATOR_DEVICE,
+    DEMUCS_MODEL,
+    DEMUCS_DEVICE,
+)
 
 configure_portable_environment()
 
@@ -90,8 +105,20 @@ def health() -> dict[str, object]:
         "status": "ok",
         "version": app_version(),
         "ffmpeg_configured": FFMPEG_BIN.is_file(),
+        "separator": SEPARATION_BACKEND,
+        "separator_device": (
+            RESIDUAL_ALLOCATOR_DEVICE
+            if SEPARATION_BACKEND == "residual_allocator"
+            else DEMUCS_DEVICE
+        ),
+        "residual_allocator_configured": (
+            RESIDUAL_ALLOCATOR_SCRIPT.is_file()
+            and RESIDUAL_ALLOCATOR_BASE_CHECKPOINT.is_file()
+            and RESIDUAL_ALLOCATOR_CHECKPOINT.is_file()
+        ),
         "demucs_model": DEMUCS_MODEL,
         "demucs_device": DEMUCS_DEVICE,
+        "upmixer_configured": UPMIXER_DIR.is_dir() and UPMIXER_SCRIPT.is_file(),
     }
 
 

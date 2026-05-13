@@ -23,6 +23,8 @@ dist/
 # Desktop build outputs
 desktop/node_modules/
 desktop/src-tauri/target/
+native_audio/target/
+vendor/Stems-Upmixer/native_loudnorm/target/
 desktop/src-tauri/gen/
 
 # Test / coverage / type-check caches
@@ -38,6 +40,9 @@ htmlcov/
 data/
 jobs/
 .run/
+
+# Vendored separator model weights
+vendor/Residual-Allocator/weights/*.ckpt
 
 # Local env / secrets
 .env
@@ -59,3 +64,5 @@ Thumbs.db
 .python-version
 .claude/
 .playwright-mcp/
+# CocoIndex Code (ccc)
+/.cocoindex_code/

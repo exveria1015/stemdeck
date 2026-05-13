@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 
-from app.core.config import DEMUCS_MODEL, JOB_TTL_SECONDS, STEM_NAMES, ffmpeg_executable
+from app.core.config import JOB_TTL_SECONDS, ROOT, STEM_NAMES, ffmpeg_executable
 from app.core.models import Job
 from app.core.registry import all_jobs as registry_all
 from app.core.registry import persist as registry_persist
@@ -14,6 +16,7 @@ from app.core.registry import remove as registry_remove
 from app.core.registry import set_proc
 
 logger = logging.getLogger("stemdeck.collect")
+_NATIVE_AUDIO_BIN: Path | None | bool = None
 
 
 def _rmtree(path: Path) -> None:
@@ -25,12 +28,12 @@ def _rmtree(path: Path) -> None:
         logger.warning("failed to remove %s", path, exc_info=True)
 
 
-def _run_ffmpeg(job: Job, cmd: list[str]) -> bool:
-    """Run an ffmpeg command, registering the subprocess with the job
+def _run_registered_process(job: Job, cmd: list[str], *, label: str, timeout: int = 300) -> bool:
+    """Run a helper command, registering the subprocess with the job
     registry so POST /api/jobs/{id}/cancel can terminate it. Returns
     True on success, False on failure or external termination.
 
-    Without registering the proc, an in-flight ffmpeg amix would block
+    Without registering the proc, an in-flight audio mix would block
     cancellation for up to its 300s timeout -- the cancel flag is set
     but the runner can't see it until subprocess.run returns. With
     set_proc, the cancel API can call proc.terminate() directly and
@@ -39,16 +42,17 @@ def _run_ffmpeg(job: Job, cmd: list[str]) -> bool:
     set_proc(job.id, proc)
     try:
         try:
-            _, stderr = proc.communicate(timeout=300)
+            _, stderr = proc.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.communicate()
-            logger.warning("ffmpeg timed out for job %s", job.id)
+            logger.warning("%s timed out for job %s", label, job.id)
             return False
         if proc.returncode != 0:
             tail = (stderr or b"").decode(errors="replace").splitlines()[-3:]
             logger.warning(
-                "ffmpeg exit %s for job %s: %s",
+                "%s exit %s for job %s: %s",
+                label,
                 proc.returncode,
                 job.id,
                 " | ".join(tail) or "(no stderr)",
@@ -59,12 +63,75 @@ def _run_ffmpeg(job: Job, cmd: list[str]) -> bool:
         set_proc(job.id, None)
 
 
+def _run_ffmpeg(job: Job, cmd: list[str]) -> bool:
+    return _run_registered_process(job, cmd, label="ffmpeg")
+
+
+def _native_audio_executable() -> Path | None:
+    global _NATIVE_AUDIO_BIN
+    if _NATIVE_AUDIO_BIN is False:
+        return None
+    if isinstance(_NATIVE_AUDIO_BIN, Path):
+        return _NATIVE_AUDIO_BIN
+
+    env_path = os.environ.get("STEMDECK_NATIVE_AUDIO_BIN", "").strip()
+    exe_name = "stemdeck-native-audio.exe" if sys.platform.startswith("win") else "stemdeck-native-audio"
+    candidates = []
+    if env_path:
+        candidates.append(Path(env_path).expanduser())
+    manifest = ROOT / "native_audio" / "Cargo.toml"
+    expected = ROOT / "native_audio" / "target" / "release" / exe_name
+    candidates.append(expected)
+    for path in candidates:
+        if path.is_file() and os.access(path, os.X_OK):
+            _NATIVE_AUDIO_BIN = path.resolve()
+            return _NATIVE_AUDIO_BIN
+
+    if env_path or not manifest.is_file() or shutil.which("cargo") is None:
+        _NATIVE_AUDIO_BIN = False
+        return None
+
+    started = time.perf_counter()
+    proc = subprocess.run(
+        ["cargo", "build", "--release", "--quiet", "--manifest-path", str(manifest)],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip().splitlines()[-3:]
+        logger.warning(
+            "native audio helper build failed: %s",
+            " | ".join(detail) or f"exit {proc.returncode}",
+        )
+        _NATIVE_AUDIO_BIN = False
+        return None
+    logger.info("native audio helper built in %.2fs", time.perf_counter() - started)
+    if expected.is_file() and os.access(expected, os.X_OK):
+        _NATIVE_AUDIO_BIN = expected.resolve()
+        return _NATIVE_AUDIO_BIN
+    _NATIVE_AUDIO_BIN = False
+    return None
+
+
+def _run_native_wav_mix(job: Job, inputs: list[Path], out: Path) -> bool:
+    binary = _native_audio_executable()
+    if binary is None:
+        return False
+    cmd = [str(binary), "mix", "--output", str(out)]
+    for path in inputs:
+        cmd.extend(["--input", str(path)])
+    ok = _run_registered_process(job, cmd, label="native audio mix")
+    if not ok:
+        out.unlink(missing_ok=True)
+    return ok
+
+
 _TERMINAL = frozenset(("done", "error", "cancelled"))
 
 
 def collect(job: Job, stems_root: Path, job_dir: Path) -> list[str]:
-    """Move Demucs-emitted stems into the job's stems/ dir and clean up
-    the demucs intermediate dir. Does NOT delete the source download --
+    """Move separator-emitted stems into the job's stems/ dir and clean up
+    the separator intermediate dir. Does NOT delete the source download --
     cleanup_source() is called by the runner after any post-processing
     that needs to re-encode the source (e.g. building original.wav)."""
     target_dir = job_dir / "stems"
@@ -75,17 +142,30 @@ def collect(job: Job, stems_root: Path, job_dir: Path) -> list[str]:
         if src.exists():
             shutil.move(str(src), target_dir / f"{name}.wav")
             found.append(name)
-    _rmtree(job_dir / DEMUCS_MODEL)
+    _cleanup_separator_output(stems_root, job_dir)
     if not found:
-        raise RuntimeError("no stems produced by demucs")
+        raise RuntimeError("no stems produced by separator")
     return found
+
+
+def _cleanup_separator_output(stems_root: Path, job_dir: Path) -> None:
+    try:
+        resolved_stems_root = stems_root.resolve()
+        resolved_job_dir = job_dir.resolve()
+    except OSError:
+        return
+
+    if resolved_stems_root.parent == resolved_job_dir:
+        _rmtree(stems_root)
+    elif resolved_stems_root.parent.parent == resolved_job_dir:
+        _rmtree(stems_root.parent)
 
 
 def cleanup_source(job_dir: Path) -> None:
     """Delete the source audio file. Called after collect AND after any
     post-processing that re-encodes the source (make_original_track).
-    The source is 100-300 MB, so getting rid of it is the bulk of disk
-    reclaim per job; only the stems remain."""
+    The source can be large, so getting rid of it is the bulk of disk reclaim
+    per job; only the stems remain."""
     for f in job_dir.glob("source.*"):
         f.unlink(missing_ok=True)
 
@@ -106,6 +186,9 @@ def make_original_track(job: Job, job_dir: Path, stems_dir: Path) -> Path | None
     if not inputs:
         return None
     out = stems_dir / "original.wav"
+    if _run_native_wav_mix(job, inputs, out):
+        return out
+
     cmd: list[str] = [
         ffmpeg_executable(),
         "-y",
@@ -143,8 +226,8 @@ def make_selected_mix(job: Job, stems_dir: Path, found: list[str]) -> Path | Non
     download URL, so a single-stem selection points the Download Mix
     button directly at the existing stem file.
 
-    amix normalize=0 keeps stem amplitudes as-is. Demucs separations
-    sum back to (close to) the original signal, so a 2-stem subset
+    amix normalize=0 keeps stem amplitudes as-is. Separator outputs
+    are expected to sum back to (close to) the original signal, so a 2-stem subset
     fits comfortably below 0 dBFS without normalization headroom."""
     selected = [s for s in job.selected_stems if s in found]
     if not selected or set(selected) == set(found):
@@ -153,6 +236,9 @@ def make_selected_mix(job: Job, stems_dir: Path, found: list[str]) -> Path | Non
         return stems_dir / f"{selected[0]}.wav"
     inputs = [stems_dir / f"{name}.wav" for name in selected]
     out = stems_dir / "mix.wav"
+    if _run_native_wav_mix(job, inputs, out):
+        return out
+
     cmd: list[str] = [
         ffmpeg_executable(),
         "-y",
